@@ -42,10 +42,11 @@ typedef struct user_screen_window {
 
 typedef struct user_screen_element {
     user_screen_window_t* parent;
-    user_screen_box_t box;
+    uint32_t x;
+    uint32_t y;
     const char* text;
+    const font_t* font;
     bool is_visible;
-    bool needs_redraw;
     user_screen_element_draw_handler_t draw;
 } user_screen_element_t;
 
@@ -74,8 +75,11 @@ void user_screen_change_window(user_screen_t* screen, uint8_t next_window_id) {
     for (dynamic_list_iterator_t* it = dynamic_list_begin(screen->windows); it; it = dynamic_list_next(it)) {
         user_screen_window_t* window = dynamic_list_get(it);
         if (window->id == next_window_id) {
+            screen->current_window->needs_redraw = false;
             window->needs_redraw = true;
             screen->current_window = window;
+            screen->display->fill(screen->display, 0);
+            return;
         }
     }
 }
@@ -87,16 +91,13 @@ void user_screen_redraw(user_screen_t* screen) {
     for (dynamic_list_iterator_t* it = dynamic_list_begin(screen->current_window->elements); it;
          it = dynamic_list_next(it)) {
         user_screen_element_t* element = dynamic_list_get(it);
-        if (element->needs_redraw) {
-            element->draw(screen->display, element);
-            element->needs_redraw = false;
-        }
+        element->draw(screen->display, element);
     }
     screen->current_window->needs_redraw = false;
     screen->display->update(screen->display);
 }
 
-user_screen_window_t* user_screen_add_window(user_screen_t* screen, uint8_t id) {
+user_screen_window_t* user_screen_window_create(user_screen_t* screen, uint8_t id) {
     if (!screen) {
         return NULL;
     }
@@ -110,35 +111,34 @@ user_screen_window_t* user_screen_add_window(user_screen_t* screen, uint8_t id) 
         return NULL;
     }
     window->id = id;
+    dynamic_list_append(screen->windows, window);
     if (!screen->current_window) {
         screen->current_window = window;
     }
     return window;
 }
 
-void user_screen_add_element_to_window(user_screen_window_t* window, user_screen_element_t* element) {
+void user_screen_window_add_element(user_screen_window_t* window, user_screen_element_t* element) {
     if (!window || !element) {
         return;
     }
     dynamic_list_append(window->elements, element);
     element->parent = window;
-    element->needs_redraw = true;
-    window->needs_redraw = true;
+    element->parent->needs_redraw = true;
 }
 
 static void draw_element(generic_display_t* display, user_screen_element_t* me) {
-    const font_t* font = font_default();
-    uint32_t x = me->box.x0;
-    uint32_t y = me->box.y0;
+    uint32_t x = me->x;
+    uint32_t y = me->y;
     const char* ptr = me->text;
     while (*ptr) {
-        for (uint8_t i = 0; i < font->width; i++) {
-            for (uint8_t j = 0; j < font->height; j++) {
-                uint8_t value = font_get_pixel(font, i, j, *ptr);
-                display->pixel(display, x + i, y + j - font->height - 1, value);
+        for (uint8_t i = 0; i < me->font->width; i++) {
+            for (uint8_t j = 0; j < me->font->height; j++) {
+                uint8_t value = font_get_pixel(me->font, i, j, *ptr);
+                display->pixel(display, x + i, y + j - me->font->height - 1, value);
             }
         }
-        x += font->width + 1;
+        x += me->font->width + 1;
         ptr++;
     }
 }
@@ -148,38 +148,51 @@ user_screen_element_t* user_screen_element_create(const char* text, uint32_t x, 
     if (!element) {
         return NULL;
     }
-    user_screen_box_t bounding_box = {.x0 = x, .y0 = y};
-    element->box = bounding_box;
     element->text = text;
-    element->needs_redraw = true;
     element->is_visible = true;
+    element->font = font_default();
     element->draw = draw_element;
+    element->x = x;
+    element->y = y;
     return element;
 }
 
-void user_screen_element_change_text(user_screen_element_t* element, const char* new_text) {
-    if (!element || !element->parent || !new_text || (strcmp(new_text, element->text) == 0)) {
+void user_screen_element_set_text(user_screen_element_t* element, const char* new_text) {
+    if (!element || !new_text) {
         return;
     }
     element->text = new_text;
-    element->needs_redraw = true;
-    element->parent->needs_redraw = true;
+    size_t text_length = strlen(new_text);
+    if (element->parent) {
+        element->parent->needs_redraw = true;
+    }
 }
 
-void user_screen_element_change_position(user_screen_element_t* element, user_screen_box_t new_bounding_box) {
-    if (!element || !element->parent || (memcmp(&new_bounding_box, &element->box, sizeof(user_screen_box_t)) == 0)) {
+void user_screen_element_set_position(user_screen_element_t* element, uint32_t x, uint32_t y) {
+    if (!element) {
         return;
     }
-    element->box = new_bounding_box;
-    element->needs_redraw = true;
+    element->x = x;
+    element->y = y;
     element->parent->needs_redraw = true;
 }
 
-void user_screen_element_change_visibility(user_screen_element_t* element, bool is_visible) {
-    if (!element || !element->parent || (element->is_visible == is_visible)) {
+void user_screen_element_set_visibility(user_screen_element_t* element, bool is_visible) {
+    if (!element) {
         return;
     }
     element->is_visible = is_visible;
-    element->needs_redraw = true;
-    element->parent->needs_redraw = true;
+    if (element->parent) {
+        element->parent->needs_redraw = true;
+    }
+}
+
+void user_screen_element_set_font(user_screen_element_t* element, const char* font_name) {
+    if (!element || !font_name) {
+        return;
+    }
+    element->font = font_get(font_name);
+    if (element->parent) {
+        element->parent->needs_redraw = true;
+    }
 }

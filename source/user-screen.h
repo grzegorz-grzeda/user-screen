@@ -45,12 +45,13 @@ user_screen_t* user_screen_create(generic_display_t* display);
 void user_screen_change_window(user_screen_t* screen, uint8_t next_window_id);
 void user_screen_redraw(user_screen_t* screen);
 
-user_screen_window_t* user_screen_add_window(user_screen_t* screen, uint8_t id);
-void user_screen_add_element_to_window(user_screen_window_t* window, user_screen_element_t* element);
+user_screen_window_t* user_screen_window_create(user_screen_t* screen, uint8_t id);
+void user_screen_window_add_element(user_screen_window_t* window, user_screen_element_t* element);
 
 user_screen_element_t* user_screen_element_create(const char* text, uint32_t x, uint32_t y);
-void user_screen_element_change_text(user_screen_element_t* element, const char* new_text);
-void user_screen_element_change_position(user_screen_element_t* element, user_screen_box_t new_bounding_box);
-void user_screen_element_change_visibility(user_screen_element_t* element, bool is_visible);
+void user_screen_element_set_text(user_screen_element_t* element, const char* new_text);
+void user_screen_element_set_position(user_screen_element_t* element, uint32_t x, uint32_t y);
+void user_screen_element_set_visibility(user_screen_element_t* element, bool is_visible);
+void user_screen_element_set_font(user_screen_element_t* element, const char* font_name);
 
 #endif  // USER_SCREEN_H

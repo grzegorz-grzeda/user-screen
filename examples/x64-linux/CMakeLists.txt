@@ -28,4 +28,7 @@ pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
 
 target_sources(${PROJECT_NAME} PRIVATE main.c)
 
+target_compile_definitions(font PRIVATE FONT_USE_6X8)
+target_compile_definitions(font PRIVATE FONT_USE_8X8)
+
 target_link_libraries(${PROJECT_NAME} PRIVATE user-screen PkgConfig::GTK4)

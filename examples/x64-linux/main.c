@@ -30,6 +30,8 @@
 typedef struct display_user_screen {
     generic_display_t* display;
     user_screen_t* user_screen;
+    int state;
+    GtkWidget* window;
 } display_user_screen_t;
 
 generic_display_pixel_handler_t pixel;
@@ -59,8 +61,8 @@ static generic_display_t* create_display(void) {
     generic_display_t* gd = calloc(1, sizeof(*gd));
     gd->context = calloc(WIDHT * HEIGHT, sizeof(uint8_t));
     gd->info.color_type = GENERIC_DISPLAY_COLOR_1B;
-    gd->info.width = 128;
-    gd->info.height = 64;
+    gd->info.width = WIDHT;
+    gd->info.height = HEIGHT;
     gd->reset = display_reset;
     gd->update = display_update;
     gd->destroy = display_destroy;
@@ -77,19 +79,46 @@ static void draw_cb(GtkDrawingArea* drawing_area, cairo_t* cr, int width, int he
 
     for (int x = 0; x < WIDHT; x++) {
         for (int y = 0; y < HEIGHT; y++) {
-            if (buffer[y * WIDHT + x]) {
-                cairo_set_source_rgb(cr, 255.0, 255.0, 255.0);
-            } else {
-                cairo_set_source_rgb(cr, 0, 0, 0);
-            }
+            double color = buffer[y * WIDHT + x] ? 255.0 : 0.0;
+            cairo_set_source_rgb(cr, color, color, color);
             cairo_rectangle(cr, x * PIXELS_PER_PIXEL, y * PIXELS_PER_PIXEL, PIXELS_PER_PIXEL, PIXELS_PER_PIXEL);
             cairo_fill(cr);
         }
     }
 }
 
+static gboolean event_key_pressed_cb(display_user_screen_t* dut,
+                                     guint keyval,
+                                     guint keycode,
+                                     GdkModifierType state,
+                                     GtkEventControllerKey* event_controller) {
+    // UP keycode=111 DOWN=116 left=113 right=114
+    switch (keycode) {
+        case 111:  // UP
+            dut->state = 0;
+            break;
+        case 116:  // DOWN
+            dut->state = 1;
+            break;
+        case 113:  // LEFT
+            if (state > 0) {
+                dut->state--;
+            }
+            break;
+        case 114:  // RIGHT
+            dut->state++;
+            break;
+        default:
+            break;
+    }
+    user_screen_change_window(dut->user_screen, dut->state);
+    gtk_widget_queue_draw(dut->window);
+    return TRUE;
+}
+
 static void activate_gtk_window(GtkApplication* app, gpointer user_data) {
     GtkWidget* window;
+    display_user_screen_t* dus = (display_user_screen_t*)user_data;
 
     window = gtk_application_window_new(app);
     gtk_window_set_default_size(GTK_WINDOW(window), WIDHT * PIXELS_PER_PIXEL, HEIGHT * PIXELS_PER_PIXEL);
@@ -97,8 +126,14 @@ static void activate_gtk_window(GtkApplication* app, gpointer user_data) {
     GtkWidget* drawing_area = gtk_drawing_area_new();
     gtk_widget_set_size_request(drawing_area, WIDHT * PIXELS_PER_PIXEL, HEIGHT * PIXELS_PER_PIXEL);
     gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(drawing_area), draw_cb, user_data, NULL);
+    dus->window = drawing_area;
 
     gtk_window_set_child(GTK_WINDOW(window), drawing_area);
+
+    GtkEventController* event_controller = gtk_event_controller_key_new();
+    g_signal_connect_data(event_controller, "key-pressed", G_CALLBACK(event_key_pressed_cb), user_data, NULL,
+                          G_CONNECT_SWAPPED);
+    gtk_widget_add_controller(GTK_WIDGET(window), event_controller);
 
     gtk_window_present(GTK_WINDOW(window));
 }
@@ -107,11 +142,19 @@ int main(int argc, char** argv) {
     display_user_screen_t* dus = calloc(1, sizeof(*dus));
     dus->display = create_display();
     dus->user_screen = user_screen_create(dus->display);
-    user_screen_window_t* w0 = user_screen_add_window(dus->user_screen, 0);
-    user_screen_element_t* e0 = user_screen_element_create("Hello world", 30, 20);
-    user_screen_add_element_to_window(w0, e0);
-    user_screen_element_t* e1 = user_screen_element_create("User screen test", 10, 40);
-    user_screen_add_element_to_window(w0, e1);
+    user_screen_window_t* w0 = user_screen_window_create(dus->user_screen, 0);
+    user_screen_element_t* e00 = user_screen_element_create("Hello world", 30, 20);
+    user_screen_window_add_element(w0, e00);
+    user_screen_element_t* e01 = user_screen_element_create("User screen test", 10, 40);
+    user_screen_window_add_element(w0, e01);
+
+    user_screen_window_t* w1 = user_screen_window_create(dus->user_screen, 1);
+    user_screen_element_t* e10 = user_screen_element_create("Another screen", 30, 20);
+    user_screen_window_add_element(w1, e10);
+    user_screen_element_t* e11 = user_screen_element_create("Another test", 10, 40);
+    user_screen_element_set_font(e10, "6x8");
+    user_screen_element_set_font(e11, "8x8");
+    user_screen_window_add_element(w1, e11);
 
     GtkApplication* app;
     int status;
