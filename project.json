@@ -1,0 +1,8 @@
+{
+    "libraries": [
+        "containers",
+        "font",
+        "generic-display",
+        "g2labs-log"
+    ]
+}
